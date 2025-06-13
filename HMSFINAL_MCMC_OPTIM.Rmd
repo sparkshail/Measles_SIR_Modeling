@@ -1,0 +1,878 @@
+# Hailey Sparks
+# HMS 581 Final 
+
+## Using the measles dataset for SC and NC
+
+```{r}
+library("RColorBrewer")
+require(glue)
+require(RColorBrewer)
+require(glue)
+require(MASS)
+require(mvtnorm)
+require(faraway)
+library("RColorBrewer")
+require(glue)
+require(RColorBrewer)
+require(glue)
+require(MASS)
+require(mvtnorm)
+require(faraway)
+install.packages("zoo")
+library(lubridate)
+library(zoo)
+```
+
+
+```{r}
+measles <- read.csv("measles_Hailey.csv")
+
+measles$PeriodStartDate <- as.Date(measles$PeriodStartDate, "%m/%d/%Y")
+measles$PeriodEndDate <- as.Date(measles$PeriodEndDate, "%m/%d/%Y")
+measles <- measles[order(measles$PeriodStartDate),]
+measles$row_duration <- as.numeric(measles$PeriodEndDate - measles$PeriodStartDate)
+
+
+
+measles <-  measles[which(measles$CountValue >0), ]
+
+
+head(measles)
+```
+
+
+```{r}
+measles$StartYear<- format(measles$PeriodStartDate, "%Y")
+measles$StartMonth<- format(measles$PeriodStartDate, "%m")
+measles$StartDay<- format(measles$PeriodStartDate, "%d")
+measles$EndYear<- format(measles$PeriodStartDate, "%Y")
+measles$EndMonth<- format(measles$PeriodStartDate, "%m")
+measles$EndDay<- format(measles$PeriodStartDate, "%d")
+```
+
+
+
+## Will look at the years 1930-1950 for now 
+
+```{r}
+measles <- measles[which(measles$PeriodStartDate <= "1950-01-01" & measles$PeriodStartDate >= "1930-01-01"), ]
+head(measles)
+```
+
+
+
+## Seperate by state in case I need it 
+
+```{r}
+measles_sc <- measles[which(measles$Admin1Name == "SOUTH CAROLINA"),]
+measles_nc <- measles[which(measles$Admin1Name == "NORTH CAROLINA"),]
+
+measles_sc <- measles_sc[order(measles_sc$PeriodStartDate),]
+measles_nc <- measles_nc[order(measles_nc$PeriodStartDate),]
+head(measles_nc)
+```
+
+
+
+```{r}
+plot(measles$PeriodStartDate,measles$CountValue, main = "Measles Cases in SC and NC during 1930-1950")
+
+plot(measles_sc$PeriodStartDate,measles_sc$CountValue, main = "Measles Cases in SC and NC during 1930-1950", col = "blue")
+points(measles_nc$PeriodStartDate,measles_nc$CountValue, col="red", pch = 'x')
+legend(x = "topright", legend=c("SC", "NC"), 
+         fill = c("blue","red"))
+```
+
+
+## Take a loSC at trends by month 
+```{r}
+
+
+plot(measles$StartMonth,measles$CountValue, main = "Measles Cases in SC and NC during 1930-1950")
+
+plot(measles_sc$StartMonth,measles_sc$CountValue, main = "Measles Cases in SC and NC during 1930-1950", col = "blue")
+points(measles_nc$StartMonth,measles_nc$CountValue, col="red", pch = 'x')
+legend(x = "topright", legend=c("SC", "NC"), 
+         fill = c("blue","red"))
+```
+
+```{r}
+#plot(measles_sc, type = 'l', col = 'blue')
+#lines(measles_nc, type = 'l', col = 'red')
+
+plot(measles_sc$CountValue,type="l", col="blue")
+lines(measles_nc$CountValue, type="l", col="red")
+legend(x = "topright", legend=c("SC", "NC"), 
+         fill = c("blue","red"))
+```
+
+```{r}
+# sc first 
+
+counts <- c()
+months<-c()
+years<-c()
+dates<-c()
+all_years <- unique(measles_sc$StartYear)
+
+count = 0
+for (year in (all_years)){
+  for (i in seq(1,12)){
+    if(i<10){
+      i<- paste(c("0", i), collapse = "")
+    }
+    cur_month <- measles_sc[which(measles_sc$StartMonth==i & measles_sc$StartYear== year),]
+    cur_counts <- sum(cur_month$CountValue)
+    counts<- c(counts, cur_counts)
+    months <- c(months, i)
+    years <- c(years,year)
+    
+    date_string <- paste(year, i, sep = "-")
+    my_date <- ym(date_string)
+    my_date<-as.Date(my_date)
+  
+    year_month_dates <- as.yearmon(date_string)
+    dates <- c(dates, year_month_dates)
+  }
+}
+
+
+measles_sc_monthly <- data.frame(dates, months, years, counts)
+
+
+counts <- c()
+months<-c()
+years<-c()
+dates<-c()
+all_years <- unique(measles_nc$StartYear)
+
+count = 0
+for (year in (all_years)){
+  for (i in seq(1,12)){
+    if(i<10){
+      i<- paste(c("0", i), collapse = "")
+    }
+    cur_month <- measles_nc[which(measles_nc$StartMonth==i & measles_nc$StartYear== year),]
+    cur_counts <- sum(cur_month$CountValue)
+    counts<- c(counts, cur_counts)
+    months <- c(months, i)
+    years <- c(years,year)
+    
+    date_string <- paste(year, i, sep = "-")
+
+    my_date <- ym(date_string)
+    my_date<-as.Date(my_date)
+  
+    year_month_dates <- as.yearmon(date_string)
+    dates <- c(dates, year_month_dates)
+  }
+  
+  measles_nc_monthly <- data.frame(dates, months, years, counts)
+}
+```
+
+
+
+# SIR Set Up
+
+```{r}
+
+Year_start <- 1930
+Year_end <- 1950
+Date_start <- as.Date(glue("{Year_start}-11-20"))
+Date_end <- as.Date(glue("{Year_end}-01-01"))
+
+measles_sc_monthly$dates <- as.Date(as.yearmon(measles_sc_monthly$dates))
+Date_start <- min(measles_sc_monthly$dates)
+Date_end <- max(measles_sc_monthly$dates)
+#Dates <- seq(Date_start, Date_end, by = "1 month")
+
+time_step = "1 month"
+Dates <- seq(Date_start, Date_end, by = time_step)
+dt <- ifelse(time_step == "1 year", 1, ifelse(time_step == "1 month", 1/12, ifelse(time_step == "1 week", 1/52, 1/365)))
+
+POPSC <- 1769000 # SC population in 1930
+POPNC <- 2382594 # NC population in 1930
+  
+```
+
+
+# The main SIR Model
+
+```{r}
+run_SIR<-function(pars){
+  SIROut <- array(0, dim = c(length(Dates) + 1, 12))
+  # [,1] Suceptible SC
+  # [,2] Infected SC
+  # [,3] Recovered SC
+  # [,4] New Infecions SC
+  # [,5] New Recovers SC
+  # [,6] new observed Cases SC
+  # [,7] Suceptible NC
+  # [,8] Infected NC
+  # [,9] Recovered NC
+  # [,10] New Infecions NC
+  # [,11] New Recovers NC
+  # [,12] new observed Cases NC 
+  
+  # order S_0SC, beta_SC, gamma, rho_SC, S_0NC, beta_NC, rho_NC, seaSC, peaSC, seaNC, peaNC, i_SC,i_NC,
+                        #  mu, delta, em_SC, im_SC, em_NC, im_NC
+  
+  # SC
+  SIROut[1,1] <- round(POPSC * pars[1]) 
+  SIROut[1,2] <- round(POPSC* pars[12]) 
+  SIROut[1,3] <- POPSC-SIROut[1,1]-SIROut[1,2] 
+  
+  beta_SC<-pars[2] 
+  rho_SC<-pars[4] 
+  
+  seaSC<-pars[8]
+  peaSC<-pars[9]
+ 
+  gamma<-pars[3] 
+  mu <- pars[14]
+  delta <- pars[15]
+  
+  em_SC <- pars[16]
+  im_SC <- pars[17]
+  
+  # NC
+  
+  SIROut[1,7] <- POPNC * pars[5] 
+  SIROut[1,8] <- round(POPNC*pars[13])
+  
+  SIROut[1,9] <- POPNC-SIROut[1,7]-SIROut[1,8] 
+  
+  beta_NC<-pars[6] 
+  rho_NC<-pars[7]  
+  
+  seaNC<-pars[10]
+  peaNC<-pars[11]
+  
+  em_NC <- pars[18]
+  im_NC <- pars[19]
+  
+  cur_pop_SC <- POPSC
+  cur_pop_NC <- POPNC
+  
+  for (d_num in seq_along(Dates)){
+    date <- Dates[d_num]
+    year <- as.numeric(format(date, "%Y"))
+       
+
+    # Get our current compartments
+    init_SSC <- SIROut[d_num, 1]
+    init_SNC <- SIROut[d_num, 7]    
+    init_ISC <- SIROut[d_num, 2]
+    init_INC <- SIROut[d_num, 8] 
+    init_RSC <- SIROut[d_num, 3]    
+    init_RNC <- SIROut[d_num, 9]
+    
+    
+    s_beta_SC <- beta_SC * (1 + seaSC * sin(2 * pi * (d_num + peaSC)/12))
+    s_beta_NC <- beta_NC * (1 + seaNC * sin(2 * pi * (d_num + peaNC)/12))
+
+    
+    # transistion probablities
+    current_SSC <- init_SSC
+    current_SNC <- init_SNC
+    current_RSC <- init_RSC 
+    current_RNC <- init_RNC
+    current_ISC <- init_ISC
+    current_INC <- init_INC
+    
+    current_NSC <- current_SSC + current_RSC + current_ISC
+    current_NNC <- current_SNC + current_RNC + current_INC  
+    curent_NTotal <- current_NSC+current_NNC
+    
+    current_NSC <- max(1, current_NSC)
+    current_NNC <- max(1, current_NNC)
+
+    current_SSC <- max(0, round(current_SSC))
+    current_ISC <- max(0, round(current_ISC))
+    current_RSC <- max(0, round(current_RSC))
+    current_SNC <- max(0, round(current_SNC))
+    current_INC <- max(0, round(current_INC))
+    current_RNC <- max(0, round(current_RNC))
+    
+    p_infSC <- 1 - exp(-s_beta_SC*current_ISC/current_NSC * dt)
+    p_infNC <- 1 - exp(-s_beta_NC*current_INC/current_NNC * dt)    
+    
+    p_recSC <- 1 - exp(-gamma/current_NSC * dt)
+    p_recNC <- 1 - exp(-gamma/current_NNC * dt)    
+    
+    
+    # number of transitions
+    new_infectionsSC <- rbinom(1, current_SSC, p_infSC)
+    new_infectionsNC <- rbinom(1, current_SNC, p_infNC)    
+    
+    new_recoveredSC <- rbinom(1,current_ISC,p_recSC)
+    new_recoveredNC <- rbinom(1,current_INC,p_recNC)
+        
+    new_casesSC <- rbinom(1,new_infectionsSC,rho_SC)
+    new_casesNC <- rbinom(1,new_infectionsNC,rho_NC)    
+    
+    
+    # Update SIROut
+    SIROut[d_num + 1, 1] <- current_SSC - new_infectionsSC  + (cur_pop_SC*mu - (cur_pop_SC*delta/3))
+    SIROut[d_num + 1, 2] <- current_ISC + new_infectionsSC - new_recoveredSC - (cur_pop_SC*delta/3)
+    SIROut[d_num + 1, 3] <- current_RSC + new_recoveredSC - (cur_pop_SC*delta/3)
+    SIROut[d_num, 4] <- new_infectionsSC
+    SIROut[d_num, 5] <- new_recoveredSC
+    SIROut[d_num, 6] <- new_casesSC
+    
+    SIROut[d_num + 1, 7] <- current_SNC - new_infectionsNC + (cur_pop_NC*mu - cur_pop_NC*delta)
+    SIROut[d_num + 1, 8] <- current_INC + new_infectionsNC - new_recoveredNC - (cur_pop_NC*delta/3)
+    SIROut[d_num + 1, 9] <- current_RNC + new_recoveredNC - (cur_pop_NC*delta/3)
+    SIROut[d_num, 10] <- new_infectionsNC
+    SIROut[d_num, 11] <- new_recoveredNC
+    SIROut[d_num, 12] <- new_casesNC    
+    
+    # Update the population 
+    cur_pop_SC <- SIROut[d_num + 1, 1] + SIROut[d_num + 1, 2] + SIROut[d_num + 1, 3]
+    cur_pop_NC <- SIROut[d_num + 1, 7] + SIROut[d_num + 1, 8] + SIROut[d_num + 1, 9]
+    
+    cur_pop_SC <- cur_pop_SC - (cur_pop_SC*em_SC) + (cur_pop_SC*im_SC)
+    cur_pop_NC <- cur_pop_NC - (cur_pop_NC*em_NC) + (cur_pop_NC*im_NC)
+    
+  }
+  
+  toss <- length(Dates) + 1
+  SIROut <- SIROut[-toss,]
+  return(SIROut)  
+}
+
+```
+
+```{r}
+param<-c(0.9, 11/(12*365)+1.1, 365*12/11, 1, 0.9, 11/(12*365)+1.1,.8,1,12,1,12,.0001,.0001, 0.00001, 0.000001, 
+         0.05, 0.08, 0.05, 0.08)
+SIR_out<-run_SIR(param)
+
+plot(SIR_out[,12],type="l", col="red", main = "Predicted Cases Using Only Optim")
+lines(SIR_out[,6], type="l", col="blue")
+legend(x = "topright", legend=c("SC", "NC"), 
+         fill = c("blue","red"))
+```
+
+# The main error function
+## Acknowledgement: Thank you to Nate for help accounting for errors 
+## and two different distributions 
+
+```{r}
+calculate_binomial_nll <- function(pars) {
+
+  # this will handle the 'closure' error
+  model_output <- tryCatch({
+    run_SIR(pars)
+  }, error = function(e) {
+    return(matrix(NA, nrow = length(measles_sc$CountValue), ncol = 12))
+  })
+  
+
+  S0_SC <- round(pars[1])
+  S0_NC <- round(pars[5])
+
+  pred_cases_SC <- model_output[, 6]
+  pred_cases_NC <- model_output[, 12]
+
+  # if there are any NAs, return a bad ll
+  if (any(is.na(pred_cases_SC)) || any(is.na(pred_cases_NC))) {
+    return(1e10)
+  }
+
+  nll_SC <- 0
+  nll_NC <- 0
+  current_S_SC <- S0_SC
+  current_S_NC <- S0_NC
+
+  for (d_num in seq_along(pred_cases_SC)) {
+    x_SC <- MeaslesSC$CountValue[d_num]
+    x_NC <- MeaslesNC$CountValue[d_num]
+
+    x_SC <- min(x_SC, current_S_SC)
+    x_NC <- min(x_NC, current_S_NC)
+
+    if (is.na(pred_cases_SC[d_num]) || current_S_SC <= 0) {
+      p_SC <- 1e-10
+    } else {
+      p_SC <- min(max(pred_cases_SC[d_num] / current_S_SC, 1e-10), 1 - 1e-10)
+    }
+
+    if (is.na(pred_cases_NC[d_num]) || current_S_NC <= 0) {
+      p_NC <- 1e-10
+    } else {
+      p_NC <- min(max(pred_cases_NC[d_num] / current_S_NC, 1e-10), 1 - 1e-10)
+    }
+
+    ll_SC <- dbinom(x = x_SC, size = current_S_SC, prob = p_SC, log = TRUE)
+    ll_NC <- dbinom(x = x_NC, size = current_S_NC, prob = p_NC, log = TRUE)
+
+    # if there are any NAs, return a bad ll
+    if (is.na(ll_SC) || is.na(ll_NC)) {
+      return(1e10)
+    }
+
+    nll_SC <- nll_SC - ll_SC
+    nll_NC <- nll_NC - ll_NC
+
+    current_S_SC <- current_S_SC - x_SC
+    current_S_NC <- current_S_NC - x_NC
+  }
+
+  return(nll_SC + nll_NC)
+}
+```
+
+
+# Make predictions using only Optim 
+
+```{r}
+
+param_init <- c(0.9, 11/(12*365)+1.1, 365*12/11, 1, 0.9, 11/(12*365)+1.1,.8,1,12,1,12,.0001,.0001, 0.00001, 0.000001, 
+                0.05, 0.05, 0.05, 0.05)
+
+param_init <- c(0.9, 11/(12*365)+1.1, 8, 1, 
+                0.9, 11/(12*365)+1.1,.8,1,12,1,12,
+                .0001,.0001, 0.00001, 0.000001, 
+                0.05, 0.05, 0.05, 0.05)
+
+opt_result <- optim(
+  par = param_init,
+  fn = calculate_binomial_nll,
+  method = "L-BFGS-B",
+  lower = c(rep(0, length(param_init))),   
+  upper = c(1, 100000, 100000, 1, 1, 100000, 1, 1, 12, 1, 12, 1, 1, 1, 1, 1, 1, 1, 1)
+  #upper = c(POPSC*10010, 1,15,1, 
+           # POPNC*10000,25,1,
+          #  1,12,1,12,
+          #  .5,.5)
+)
+
+print(opt_result$value)   
+print(opt_result$par)     
+
+```
+
+```{r plot}
+# Run SIR
+best_pars <- opt_result$par
+model_fit <- run_SIR(best_pars)
+
+# Extract predicted observed case counts
+pred_SC <- model_fit[, 6]   
+pred_NC <- model_fit[, 12]  
+
+obs_SC <- measles_sc_monthly$counts
+obs_NC <- measles_nc_monthly$counts
+
+time_index <- seq_along(obs_SC) 
+
+# SC
+plot(time_index, obs_SC, type = "l", col = "black", lwd = 2,
+     ylab = "Case Count", xlab = "Time", main = "SC Cases",
+     ylim = range(c(obs_SC, pred_SC), na.rm = TRUE))
+lines(time_index, pred_SC, col = "blue", lwd = 2)
+legend("topright", legend = c("Observed", "Predicted"), col = c("black", "blue"), lwd = 2)
+
+
+time_index <- seq_along(obs_NC)[1:(length(obs_NC)-12)]
+# NC
+plot(time_index, obs_NC[1:(length(obs_NC)-12)], type = "l", col = "black", lwd = 2,
+     ylab = "Case Count", xlab = "Time", main = "NC Cases",
+     ylim = range(c(obs_NC, pred_NC), na.rm = TRUE))
+lines(time_index, pred_NC, col = "red", lwd = 2)
+legend("topright", legend = c("Observed", "Predicted"), col = c("black", "red"), lwd = 2)
+
+```
+```{r}
+obs_data <- obs_SC
+
+#### Example Plot #1
+COLS <- brewer.pal(4, "Set1")
+COLS <- cbind(COLS,adjustcolor(COLS, alpha = 0.1))
+
+n_draws <- 25
+#best_guess_pars <- c(Population/(1.5), 8/365, 10/365, 1)
+best_guess_pars<- opt_result$par
+draw_results <- lapply(seq_len(n_draws), function(x) run_SIR(best_guess_pars))
+
+# case data for each part, needs to be the observed data 
+
+best_ll <- calculate_binomial_nll(best_guess_pars)
+
+par(mfrow=c(2,1), mar = c(5.1,5.1,1.1,0.6), oma = c(0,0,2.1,0))
+plot(seq(1,length(Dates)), seq(1,length(Dates)), type = 'n', 
+     xlab = "Date", ylab = "Individuals", ylim = c(0,2382594), main=paste("Best log-likelihood for SC", best_ll, sep = " "))
+
+
+tmp_draw_results<-draw_results
+
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  tmp_draw_results<-tmp_draw_results[-1,]
+  lines(seq(1,length(obs_data)-1), tmp_draw_results[,1], col = COLS[2,2], lwd = 2)
+  lines(seq(1,length(obs_data)-1), tmp_draw_results[,2], col = COLS[1,2], lwd = 2)
+  lines(seq(1,length(obs_data)-1), tmp_draw_results[,3], col = COLS[3,2], lwd = 2)
+}
+legend("right", legend = c("Infectious", "Susceptible", "Recovered"), lwd = 2, col = COLS[1:3,1], bty = "n")
+```
+
+```{r}
+#XMAX <- max(which(obs_data >= 0))
+
+plot(obs_data, type = 'n', 
+     xlab = "Date", ylab = "Cases", ylim = c(0,1.25*max(100)), main = 'Observed vs predicted cases SC')
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  #lines(Dates[seq_len(XMAX)], tmp_draw_results[seq_len(XMAX),6], col = COLS[4,2], lwd = 2)
+  lines(seq(1,length(Dates)), tmp_draw_results[,4], col = COLS[4,2], lwd = 2)
+  
+}
+#points(seq(1,length(measles_sc$PeriodStartDate)), obs_data[seq_len(XMAX)], pch = 21, cex = 1, bg = COLS[4,1])
+points(seq(1,length(Dates)), obs_data, pch = 21, cex = 1, bg = COLS[4,1])
+#legend("topright", legend = c("Observed", "Predicted"), lwd = c(NA,2), pch = c(21, NA), 
+       #col = c(1,COLS[4,1]), pt.bg = c(COLS[4,1],NA), pt.cex = c(2, NA), bty = "n")
+```
+
+```{r}
+obs_data <- obs_NC
+
+#### Example Plot #1
+COLS <- brewer.pal(4, "Set1")
+COLS <- cbind(COLS,adjustcolor(COLS, alpha = 0.1))
+
+n_draws <- 25
+#best_guess_pars <- c(Population/(1.5), 8/365, 10/365, 1)
+best_guess_pars<- opt_result$par
+draw_results <- lapply(seq_len(n_draws), function(x) run_SIR(best_guess_pars))
+
+# case data for each part, needs to be the observed data 
+
+best_ll <- calculate_binomial_nll(best_guess_pars)
+
+par(mfrow=c(2,1), mar = c(5.1,5.1,1.1,0.6), oma = c(0,0,2.1,0))
+plot(seq(1,length(Dates)), seq(1,length(Dates)), type = 'n', 
+     xlab = "Date", ylab = "Individuals", ylim = c(0,4382594), main=paste("Best log-likelihood for NC", best_ll, sep = " "))
+
+
+tmp_draw_results<-draw_results
+
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  tmp_draw_results<-tmp_draw_results[-1,]
+  lines(seq(1,length(obs_data)-12-1), tmp_draw_results[,7], col = COLS[2,2], lwd = 2)
+  lines(seq(1,length(obs_data)-12-1), tmp_draw_results[,8], col = COLS[1,2], lwd = 2)
+  lines(seq(1,length(obs_data)-12-1), tmp_draw_results[,9], col = COLS[3,2], lwd = 2)
+}
+legend("right", legend = c("Infectious", "Susceptible", "Recovered"), lwd = 2, col = COLS[1:3,1], bty = "n")
+```
+```{r}
+#XMAX <- max(which(obs_data >= 0))
+
+plot(obs_data, type = 'n', 
+     xlab = "Date", ylab = "Cases", ylim = c(0,1.25*max(100)), main = "Observed vs predicted cases for NC")
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  #lines(Dates[seq_len(XMAX)], tmp_draw_results[seq_len(XMAX),6], col = COLS[4,2], lwd = 2)
+  lines(seq(1,length(Dates)), tmp_draw_results[,4], col = COLS[4,2], lwd = 2)
+  
+}
+#points(seq(1,length(measles_sc$PeriodStartDate)), obs_data[seq_len(XMAX)], pch = 21, cex = 1, bg = COLS[4,1])
+points(seq(1,length(Dates)), obs_data[1:(length(obs_data)-12)], pch = 21, cex = 1, bg = COLS[4,1])
+#legend("topright", legend = c("Observed", "Predicted"), lwd = c(NA,2), pch = c(21, NA), 
+       #col = c(1,COLS[4,1]), pt.bg = c(COLS[4,1],NA), pt.cex = c(2, NA), bty = "n")
+```
+
+Now I will try using MCMC to see if I can get a better fit.
+
+# MCMC functions 
+
+```{r}
+beta <- function(date, par){
+  return(par)
+}
+
+transform_pars <- function(pars){
+  out <- c(round(inv.logit(pars[1])*Population),
+           exp(pars[2]),
+           exp(pars[3]),
+           inv.logit(pars[4]))
+  return(out)
+}
+
+logit <- function(p) log(p / (1-p))
+inv.logit <- function(x) exp(x)/(1+exp(x))
+
+
+proposal_distribution <- function(proposal_mean, proposal_sd){
+  new_pars <- c(rnorm(1, mean = proposal_mean[1], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[2], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[3], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[4], sd = proposal_sd), 
+             rnorm(1, mean = proposal_mean[5], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[6], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[7], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[8], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[9], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[10], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[11], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[12], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[13], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[14], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[15], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[16], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[17], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[18], sd = proposal_sd),
+             rnorm(1, mean = proposal_mean[19], sd = proposal_sd))
+  return(new_pars)
+}
+
+target_distribution <- function(pars){
+  guess_out <- run_SIR(pars)
+  #pars_t <- transform_pars(pars)
+
+  out_SC <- sum(dpois(obs_data, lambda = guess_out[,6] )) #, log=TRUE))
+  out_NC <- sum(dpois(obs_data, lambda = guess_out[,12] )) #, log=TRUE))
+  
+  if (is.na(out_SC) || is.na(out_NC)){
+    out_SC<-0
+    out_NC <- 0
+  }
+  return (out_SC+out_NC)
+  
+}
+
+MH_step <- function(p_new, p_current){
+  alpha <- p_new / p_current
+  r_num <- runif(1)
+  print(alpha)
+  print(r_num)
+  #
+  accept_step <- ifelse(r_num < alpha, TRUE, FALSE)
+  #
+  return(accept_step)
+}
+
+MCMC_step <- function(current_pars, p_current){
+  # Propose new step
+  new_pars <- proposal_distribution(current_pars, proposal_sd)
+  # Evaluate new step
+  p_new <- target_distribution(new_pars)
+  print(p_new)
+  # Make decision
+  move <- MH_step(p_new, p_current)
+  print(move)
+  # Update
+  if (!move){
+    new_pars <- current_pars
+    p_new <- p_current
+  }
+  # Return next step
+  return(list(new_pars, p_new))
+}
+
+```
+
+
+Find some decent parameters
+```{r}
+worked <- {}
+for (i in 1:1000){
+  current_pars <- Initial_guess <- c(0.9, 11/(12*365)+1.1, 365*12/11, 1, 0.9, 11/(12*365)+1.1,.8,1,12,1,12,.0001,.0001,     
+                                     0.00001, 0.000001, 0.05, 0.08, 0.05, 0.08)
+  p_current <- target_distribution(current_pars)
+  
+  if (p_current > 0){
+    worked <- current_pars
+  }
+}
+```
+
+
+
+```{r}
+N_chain <- 100
+proposal_sd <- 0.1
+all_pars <- worked
+p_current <- target_distribution(current_pars)
+all_p <- p_current
+
+for (c_num in seq_len(N_chain)){
+  # Do a step
+  out <- MCMC_step(current_pars, p_current)
+  new_pars <- out[[1]]
+  p_new <- out[[2]]
+  
+  # Update things
+  all_pars <- rbind(all_pars, new_pars)
+  current_pars <- new_pars
+  all_p <- c(all_p, p_new)
+  p_current <- p_new
+}
+```
+```{r}
+current_pars
+```
+
+
+
+```{r}
+# Initial guess (must match structure expected by run_SIR)
+# order S_0SC, beta_SC, gamma, rho_SC, S_0NC, beta_NC, rho_NC, seaSC, peaSC, seaNC, peaNC, i_SC,i_NC,
+                        #  mu, delta, em_SC, im_SC, em_NC, im_NC
+
+# Optimization
+
+param_init<-c(POPSC, .1, 10, 1, 5800000, .1, .8, 1, 12, 1, 12, .0001, .0001)
+param_init <- c(0.9, 11/(12*365)+1.1, 365*12/11, 1, 0.9, 11/(12*365)+1.1,.8,1,12,1,12,.0001,.0001, 0.00001, 0.000001, 
+                0.05, 0.05, 0.05, 0.05)
+
+param_init <- current_pars
+
+opt_result <- optim(
+  par = param_init,
+  fn = calculate_binomial_nll,
+  method = "L-BFGS-B",
+  lower = c(rep(0, length(param_init))),   
+  #upper = c(POPSC*10010, 1,15,1, 
+         #   POPNC*10000,25,1,
+         #   1,12,1,12,
+         #   .5,.5, 1, 1, 1, 1, 1) 
+  upper = c(1, 100000, 100000, 1, 1, 100000, 1, 1, 12, 1, 12, 1, 1, 1, 1, 1, 1, 1, 1)
+)
+
+print(opt_result$value)     # minimized negative log-likelihood
+print(opt_result$par)       # estimated parameters
+
+```
+
+
+```{r}
+# Run SIR
+best_pars <- opt_result$par
+model_fit <- run_SIR(best_pars)
+
+# Extract predicted observed case counts
+pred_SC <- model_fit[, 6]   # SC predicted observed cases
+pred_NC <- model_fit[, 12]  # NC predicted observed cases
+
+obs_SC <- measles_sc_monthly$counts
+obs_NC <- measles_nc_monthly$counts
+
+time_index <- seq_along(obs_SC) 
+
+# SC
+plot(time_index, obs_SC, type = "l", col = "black", lwd = 2,
+     ylab = "Case Count", xlab = "Time", main = "SC Cases MCMC",
+     ylim = range(c(obs_SC, pred_SC), na.rm = TRUE))
+lines(time_index, pred_SC, col = "blue", lwd = 2)
+legend("topright", legend = c("Observed", "Predicted"), col = c("black", "blue"), lwd = 2)
+
+
+time_index <- seq_along(obs_NC)[1:(length(obs_NC)-12)]
+# NC
+plot(time_index, obs_NC[1:(length(obs_NC)-12)], type = "l", col = "black", lwd = 2,
+     ylab = "Case Count", xlab = "Time", main = "NC Cases MCMC",
+     ylim = range(c(obs_NC, pred_NC), na.rm = TRUE))
+lines(time_index, pred_NC, col = "red", lwd = 2)
+legend("topright", legend = c("Observed", "Predicted"), col = c("black", "red"), lwd = 2)
+
+```
+```{r}
+obs_data <- obs_SC
+
+#### Example Plot #1
+COLS <- brewer.pal(4, "Set1")
+COLS <- cbind(COLS,adjustcolor(COLS, alpha = 0.1))
+
+n_draws <- 25
+#best_guess_pars <- c(Population/(1.5), 8/365, 10/365, 1)
+best_guess_pars<- opt_result$par
+draw_results <- lapply(seq_len(n_draws), function(x) run_SIR(best_guess_pars))
+
+# case data for each part, needs to be the observed data 
+
+best_ll <- calculate_binomial_nll(best_guess_pars)
+
+par(mfrow=c(2,1), mar = c(5.1,5.1,1.1,0.6), oma = c(0,0,2.1,0))
+plot(seq(1,length(Dates)), seq(1,length(Dates)), type = 'n', 
+     xlab = "Date", ylab = "Individuals", ylim = c(0,2382594), main=paste("Best log-likelihood for SC", best_ll, sep = " "))
+
+
+tmp_draw_results<-draw_results
+
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  tmp_draw_results<-tmp_draw_results[-1,]
+  lines(seq(1,length(obs_data)-1), tmp_draw_results[,1], col = COLS[2,2], lwd = 2)
+  lines(seq(1,length(obs_data)-1), tmp_draw_results[,2], col = COLS[1,2], lwd = 2)
+  lines(seq(1,length(obs_data)-1), tmp_draw_results[,3], col = COLS[3,2], lwd = 2)
+}
+legend("right", legend = c("Infectious", "Susceptible", "Recovered"), lwd = 2, col = COLS[1:3,1], bty = "n")
+```
+```{r}
+#XMAX <- max(which(obs_data >= 0))
+
+plot(obs_data, type = 'n', 
+     xlab = "Date", ylab = "Cases", ylim = c(0,1.25*max(100)), main = 'Observed vs predicted cases SC')
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  #lines(Dates[seq_len(XMAX)], tmp_draw_results[seq_len(XMAX),6], col = COLS[4,2], lwd = 2)
+  lines(seq(1,length(Dates)), tmp_draw_results[,4], col = COLS[4,2], lwd = 2)
+  
+}
+#points(seq(1,length(measles_sc$PeriodStartDate)), obs_data[seq_len(XMAX)], pch = 21, cex = 1, bg = COLS[4,1])
+points(seq(1,length(Dates)), obs_data, pch = 21, cex = 1, bg = COLS[4,1])
+#legend("topright", legend = c("Observed", "Predicted"), lwd = c(NA,2), pch = c(21, NA), 
+       #col = c(1,COLS[4,1]), pt.bg = c(COLS[4,1],NA), pt.cex = c(2, NA), bty = "n")
+```
+
+```{r}
+obs_data <- obs_NC
+
+#### Example Plot #1
+COLS <- brewer.pal(4, "Set1")
+COLS <- cbind(COLS,adjustcolor(COLS, alpha = 0.1))
+
+n_draws <- 25
+#best_guess_pars <- c(Population/(1.5), 8/365, 10/365, 1)
+best_guess_pars<- opt_result$par
+draw_results <- lapply(seq_len(n_draws), function(x) run_SIR(best_guess_pars))
+
+# case data for each part, needs to be the observed data 
+
+best_ll <- calculate_binomial_nll(best_guess_pars)
+
+par(mfrow=c(2,1), mar = c(5.1,5.1,1.1,0.6), oma = c(0,0,2.1,0))
+plot(seq(1,length(Dates)), seq(1,length(Dates)), type = 'n', 
+     xlab = "Date", ylab = "Individuals", ylim = c(0,4382594), main=paste("Best log-likelihood for NC", best_ll, sep = " "))
+
+
+tmp_draw_results<-draw_results
+
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  tmp_draw_results<-tmp_draw_results[-1,]
+  lines(seq(1,length(obs_data)-12-1), tmp_draw_results[,7], col = COLS[2,2], lwd = 2)
+  lines(seq(1,length(obs_data)-12-1), tmp_draw_results[,8], col = COLS[1,2], lwd = 2)
+  lines(seq(1,length(obs_data)-12-1), tmp_draw_results[,9], col = COLS[3,2], lwd = 2)
+}
+legend("right", legend = c("Infectious", "Susceptible", "Recovered"), lwd = 2, col = COLS[1:3,1], bty = "n")
+```
+```{r}
+#XMAX <- max(which(obs_data >= 0))
+
+plot(obs_data, type = 'n', 
+     xlab = "Date", ylab = "Cases", ylim = c(0,1.25*max(100)), main = "Observed vs predicted cases for NC")
+for (n_num in seq_len(n_draws)){
+  tmp_draw_results <- draw_results[[n_num]]
+  #lines(Dates[seq_len(XMAX)], tmp_draw_results[seq_len(XMAX),6], col = COLS[4,2], lwd = 2)
+  lines(seq(1,length(Dates)), tmp_draw_results[,4], col = COLS[4,2], lwd = 2)
+  
+}
+#points(seq(1,length(measles_sc$PeriodStartDate)), obs_data[seq_len(XMAX)], pch = 21, cex = 1, bg = COLS[4,1])
+points(seq(1,length(Dates)), obs_data[1:(length(obs_data)-12)], pch = 21, cex = 1, bg = COLS[4,1])
+#legend("topright", legend = c("Observed", "Predicted"), lwd = c(NA,2), pch = c(21, NA), 
+       #col = c(1,COLS[4,1]), pt.bg = c(COLS[4,1],NA), pt.cex = c(2, NA), bty = "n")
+```
