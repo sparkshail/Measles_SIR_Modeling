@@ -1,4 +1,4 @@
-# HMS-581-Final
+# Modeling the 20th Century Measles Outbreak
 ### Fitting a SIR Model to the Measles Outbreak in SC and NC 1930-1950
 3 augmentations to the basic SIR Model were addded
 - Births and deaths
